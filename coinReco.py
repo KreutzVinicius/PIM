@@ -1,68 +1,96 @@
 import cv2
-import numpy as np
-
-deltas = [[-1, 0], [0, 1], [1, 0], [0, -1]]
-rot = 0
-pilha = []
-mat = []
 
 
-def marcador(img, i, j, direc, rot):
-    flag = -1
-    print(img[i][j])
-    if (img[i][j] == 255):
-        pilha.append([i, j])
-        marcaCelula(i, j, rot, direc)
-        while (pilha[0] != None):
-            for x in range(4):
-                g = i+direc[x][0]
-                h = j+direc[x][1]
-                print("#19" + g, h)
-                if (img[g][h] == 255):
-                    pilha.append([g, h])
-                    marcaCelula(i, j, rot, direc)
-                    i = g
-                    j = h
-                    flag = 1
-                    break
-            if (flag == -1):
-                i, j = pilha.pop()
+def detect_coins():
+    coins = cv2.imread('coins.jpg')
+
+    gray = cv2.cvtColor(coins, cv2.COLOR_BGR2GRAY)
+    img = cv2.medianBlur(gray, 7)
+    circles = cv2.HoughCircles(
+        img,
+        cv2.HOUGH_GRADIENT,
+        1,
+        50,
+        param1=100,
+        param2=50,
+        minRadius=10,
+        maxRadius=380,
+    )
+
+    coins_copy = coins.copy()
+
+    for detected_circle in circles[0]:
+        x_coor, y_coor, detected_radius = detected_circle
+        coins_detected = cv2.circle(
+            coins_copy,
+            (int(x_coor), int(y_coor)),
+            int(detected_radius),
+            (0, 255, 0),
+            4,
+        )
+
+    cv2.imwrite("coin_test.jpg", coins_detected)
+
+    return circles
 
 
-def marcaCelula(i, j, rot, direc):
-    for x in range(4):
-        g = i+direc[x][0]
-        h = j+direc[x][1]
-        print(i)
-        print(j)
-        print(g)
-        print(h)
-        if (mat[g][h] != 0 and mat[g][h] != 255):
-            mat[i][j] = mat[g][h]
-            break
-        if (mat[i][j] == 255):
-            rot += 20
-            mat[i][j] = rot
+def calculate_amount():
+    reais = {
+        "0.1 BRL": {
+            "value": 0.1,
+            "radius": 20,
+            "ratio": 1,
+            "count": 0,
+        },
+        "0.5 BRL": {
+            "value": 0.5,
+            "radius": 23,
+            "ratio": 1.15,
+            "count": 0,
+        },
+        "1 BRL": {
+            "value": 1,
+            "radius": 27,
+            "ratio": 1.34,
+            "count": 0,
+        },
+    }
+
+    circles = detect_coins()
+    radius = []
+    coordinates = []
+
+    for detected_circle in circles[0]:
+        x_coor, y_coor, detected_radius = detected_circle
+        radius.append(detected_radius)
+        coordinates.append([x_coor, y_coor])
+
+    smallest = min(radius)
+    tolerance = 0.15
+    total_amount = 0
+
+    coins_circled = cv2.imread('coin_test.jpg')
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    for coin in circles[0]:
+        ratio_to_check = coin[2] / smallest
+        coor_x = coin[0]
+        coor_y = coin[1]
+        for real in reais:
+            value = reais[real]['value']
+            if abs(ratio_to_check - reais[real]['ratio']) <= tolerance:
+                reais[real]['count'] += 1
+                total_amount += reais[real]['value']
+                cv2.putText(coins_circled, str(value), (int(coor_x), int(coor_y)), font, 1,
+                            (0, 0, 0), 4)
+
+    print(f"O valor total é de: {total_amount} BRL")
+    for real in reais:
+        pieces = reais[real]['count']
+        print(f"{real} = {pieces}x")
+
+    cv2.imwrite('coins_value.jpg', coins_circled)
 
 
-roi = cv2.imread("coins.jpg")
-
-gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-gray_blur = cv2.GaussianBlur(gray, (15, 15), 0)
-thresh = cv2.adaptiveThreshold(gray_blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                               cv2.THRESH_BINARY_INV, 11, 1)
-kernel = np.ones((3, 3), np.uint8)
-closing = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE,
-                           kernel, iterations=10)
-
-
-for i, x in enumerate(closing):
-    for j, y in enumerate(x):
-
-        if y == 255:
-            marcador(closing, i, j, deltas, rot)
-
-# cv2.imshow("Adaptive Thresholding", closing)
-# cv2.waitKey(0)
-
-print(mat)
+if __name__ == "__main__":
+    calculate_amount()
